@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Electron</title>
+    <script src="/libs/live2dcubismcore.min.js"></script>
+    <script src="/libs/live2d.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      const ws = new WebSocket("wss://8a7d-219-70-65-54.ngrok-free.app/ws_music");
+      ws.onopen = () => console.log("✅ WebSocket 已連線");
+      ws.onmessage = function(event) {
+          const data = JSON.parse(event.data);
+          if (data.play_url) {
+              console.log("🔔 收到播放通知：", data.play_url);
+              const player = document.getElementById("player");
+              player.src = data.play_url;
+              
+              fetchMp3AsBase64(player.src).then(base64 => {
+              if (base64) {
+                console.log('Base64:', base64);
+                // 如果要加上 data URI 前綴，可這樣用：
+                // console.log('data:audio/mp3;base64,' + base64);
+                window.live2dModel.speak(`data:audio/wav;base64,${base64}`);
+              }
+            });
+            
+          }
+      };
+      
+      ws.onopen = () => console.log("✅ WebSocket 已連線");
+      ws.onclose = () => console.log("❌ WebSocket 關閉");
+
+      async function fetchMp3AsBase64(mp3Url) {
+          try {
+            const response = await fetch(mp3Url);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+
+            return await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64data = reader.result.split(',')[1]; // 去掉 data:audio/mp3;base64, 前綴
+                resolve(base64data);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } catch (error) {
+            console.error('Error fetching or converting MP3:', error);
+            return null;
+          }
+        }
+
+
+    </script>
+  </body>
+</html>
