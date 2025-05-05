@@ -9,9 +9,30 @@
 
   <body>
     <div id="root"></div>
+    <audio id="player" controls autoplay style="display:none;"></audio>
 
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // const mockData = {
+      //   play_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      //   play_background_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+      // };
+
+      // const player = document.getElementById("player");
+
+      // const base64Promise = fetchMp3AsBase64(mockData.play_url);
+      // const bgAudioPromise = new Promise(resolve => {
+      //     player.src = mockData.play_background_url;
+      //     player.oncanplaythrough = () => resolve();
+      // });
+
+      // Promise.all([base64Promise, bgAudioPromise]).then(([base64]) => {
+      //     if (base64) {
+      //         console.log('Base64:', base64.slice(0, 100) + "..."); // 印前100字節預覽
+      //         player.play();
+      //         window.live2dModel?.speak?.(`data:audio/wav;base64,${base64}`); // 若無 live2dModel 也不報錯
+      //     }
+      // });
       const ws = new WebSocket("wss://8a7d-219-70-65-54.ngrok-free.app/ws_music");
       ws.onopen = () => console.log("✅ WebSocket 已連線");
       ws.onmessage = function(event) {
@@ -19,17 +40,23 @@
           if (data.play_url) {
               console.log("🔔 收到播放通知：", data.play_url);
               const player = document.getElementById("player");
-              player.src = data.play_url;
-              
-              fetchMp3AsBase64(player.src).then(base64 => {
-              if (base64) {
-                console.log('Base64:', base64);
-                // 如果要加上 data URI 前綴，可這樣用：
-                // console.log('data:audio/mp3;base64,' + base64);
-                window.live2dModel.speak(`data:audio/wav;base64,${base64}`);
-              }
-            });
-            
+
+              // 取得 base64 與 background audio 的 Promise
+              const base64Promise = fetchMp3AsBase64(data.play_url);
+              const bgAudioPromise = new Promise(resolve => {
+                  player.src = data.play_background_url;
+                  player.oncanplaythrough = () => resolve(); // 確保可以播放
+              });
+
+              // 同步等待兩個都 ready
+              Promise.all([base64Promise, bgAudioPromise]).then(([base64]) => {
+                  if (base64) {
+                      console.log('Base64:', base64);
+                      // 開始播放兩者
+                      player.play();
+                      window.live2dModel.speak(`data:audio/wav;base64,${base64}`);
+                  }
+              });
           }
       };
       

@@ -1,6 +1,6 @@
 /* eslint-disable no-use-before-define */
 import {
-  createContext, useContext, useRef, useCallback, useEffect, useReducer, useMemo,
+  createContext, useContext, useRef, useCallback, useEffect, useReducer, useMemo, useState
 } from 'react';
 import { MicVAD } from '@ricky0123/vad-web';
 import { useInterrupt } from '@/components/canvas/live2d';
@@ -108,7 +108,8 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
   const previousTriggeredProbabilityRef = useRef(0);
 
   // Persistent state management
-  const [micOn, setMicOn] = useLocalStorage('micOn', DEFAULT_VAD_STATE.micOn);
+  // const [micOn, setMicOn] = useLocalStorage('micOn', DEFAULT_VAD_STATE.micOn);
+  const [micOn, setMicOn] = useState(DEFAULT_VAD_STATE.micOn);
   const autoStopMicRef = useRef(false);
   const [autoStopMic, setAutoStopMicState] = useLocalStorage(
     'autoStopMic',
@@ -275,22 +276,26 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
     });
 
     vadRef.current = newVAD;
-    newVAD.start();
+    // newVAD.start();
   };
 
   /**
    * Start microphone and VAD processing
    */
   const startMic = useCallback(async () => {
+    console.log('[🔥 startMic 被呼叫！]');
     try {
       if (!vadRef.current) {
         console.log('Initializing VAD');
-        await initVAD();
-      } else {
-        console.log('Starting VAD');
-        vadRef.current.start();
+        await initVAD();  // ← 不會自動啟動
       }
-      setMicOn(false);
+  
+      if (vadRef.current) {
+        console.log('Starting VAD');
+        vadRef.current.start();  // ← 這裡明確控制
+      }
+  
+      setMicOn(true);
     } catch (error) {
       console.error('Failed to start VAD:', error);
       toaster.create({
@@ -300,6 +305,25 @@ export function VADProvider({ children }: { children: React.ReactNode }) {
       });
     }
   }, []);
+  // const startMic = useCallback(async () => {
+  //   try {
+  //     if (!vadRef.current) {
+  //       console.log('Initializing VAD');
+  //       await initVAD();
+  //     } else {
+  //       console.log('Starting VAD');
+  //       vadRef.current.start();
+  //     }
+  //     setMicOn(true);
+  //   } catch (error) {
+  //     console.error('Failed to start VAD:', error);
+  //     toaster.create({
+  //       title: `Failed to start VAD: ${error}`,
+  //       type: 'error',
+  //       duration: 2000,
+  //     });
+  //   }
+  // }, []);
 
   /**
    * Stop microphone and VAD processing
