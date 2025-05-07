@@ -14,8 +14,8 @@
     <script type="module" src="/src/main.tsx"></script>
     <script>
       // const mockData = {
-      //   play_url: "https://2871-219-70-65-54.ngrok-free.app/music/sing_opt/vocal.mp3",
-      //   play_background_url: "https://2871-219-70-65-54.ngrok-free.app/music/sing_opt/instrument.mp3"
+      //   play_url: "https://8a7d-219-70-65-54.ngrok-free.app/music/sing_opt/vocal.mp3",
+      //   play_background_url: "https://8a7d-219-70-65-54.ngrok-free.app/music/sing_opt/instrument.mp3"
       // };
 
       // // 模擬 WebSocket 收到訊息
@@ -48,7 +48,7 @@
       //         window.live2dModel.speak(`data:audio/wav;base64,${base64}`);
       //       }
       //     });
-      const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
+      const ws = new WebSocket("wss://8a7d-219-70-65-54.ngrok-free.app/ws_music");
       ws.onopen = () => console.log("✅ WebSocket 已連線");
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -112,7 +112,7 @@
       //       return null;
       //     }
       //   }
-      // const mp3Url = "https://2871-219-70-65-54.ngrok-free.app/music/sing_opt/vocal.mp3";
+      // const mp3Url = "https://8a7d-219-70-65-54.ngrok-free.app/music/sing_opt/vocal.mp3";
       // playVoiceWithMouthSync(window.live2dModel, mp3Url);
         // 下載 MP3 並轉 base64
 
@@ -166,38 +166,15 @@
           });
         }
 
-
         // 嘴型動畫控制器
         function startMouthAnimation(live2dModel, audio) {
-          const model = live2dModel?.internalModel?.coreModel;
-          if (!model) {
-            console.error("🚫 找不到 coreModel");
+          const model = live2dModel.internalModel?.coreModel;
+          const paramId = "PARAM_MOUTH_OPEN_Y";
+
+          if (!model || typeof model.setParamFloat !== 'function') {
+            console.error("🚫 找不到正確的 Live2D core model 來控制嘴型");
             return;
           }
-
-          const paramIds = model._parameterIds || model.parameters?.ids || [];
-          const mouthIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("mouth") && id.toLowerCase().includes("open")
-          );
-          const mouthFormIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("mouthform")
-          );
-          const eyeLOpenIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("eye") && id.toLowerCase().includes("l") && id.toLowerCase().includes("open")
-          );
-          const eyeROpenIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("eye") && id.toLowerCase().includes("r") && id.toLowerCase().includes("open")
-          );
-          const eyeBallXIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("eyeballx")
-          );
-          const angleXIndex = paramIds.findIndex(id => id.toLowerCase() === "paramanglex");
-          const angleYIndex = paramIds.findIndex(id => id.toLowerCase() === "paramangley");
-          const bodyXIndex = paramIds.findIndex(id => id.toLowerCase() === "parambodyx");
-
-          const set = (index, val) => {
-            if (index >= 0) model.setParameterValueByIndex(index, val);
-          };
 
           const audioContext = new AudioContext();
           const source = audioContext.createMediaElementSource(audio);
@@ -211,30 +188,18 @@
 
           let stopped = false;
           let smoothedVolume = 0;
-          let displayedVolume = 0;
+          let displayedVolume = 0; // 👉 顯示給嘴巴的值
           const smoothing = 0.6;
-          const decayRate = 0.02;
+          const decayRate = 0.02; // 嘴巴關閉時的下降速度
 
           let silentFrameCount = 0;
-          const maxSilentFrames = 30;
-
-          // 眨眼狀態
-          let lastBlinkTime = 0;
-          let nextBlinkDelay = 2 + Math.random() * 3;
-          let blinkProgress = 0;
-          let isBlinking = false;
-
-          function getRandomBlinkDelay() {
-            return 2 + Math.random() * 3;
-          }
+          const maxSilentFrames = 30; // 幾幀後開始關嘴
 
           const tick = () => {
-            const now = performance.now() / 1000;
-
             if (audio.paused || audio.ended) {
               if (!stopped) {
-                displayedVolume = Math.max(0, displayedVolume - decayRate);
-                set(mouthIndex, displayedVolume);
+                displayedVolume = Math.max(0, displayedVolume - decayRate); // 慢慢收嘴
+                model.setParamFloat(paramId, displayedVolume);
                 model.update();
                 live2dModel.update();
 
@@ -263,52 +228,80 @@
             }
 
             if (silentFrameCount >= maxSilentFrames) {
-              displayedVolume = Math.max(0, displayedVolume - decayRate);
+              displayedVolume = Math.max(0, displayedVolume - decayRate); // 平滑下降
             } else {
               displayedVolume = smoothedVolume;
             }
-
-            set(mouthIndex, Math.max(displayedVolume, 0.03));
-
-            // 擺頭 + 身體 + 嘴型表情
+            model.setParamFloat(paramId, Math.max(displayedVolume, 0.03));
+            const time = performance.now() / 1000;
+            // const swingBase = Math.max(smoothedVolume, 0.05);
+            // const swingStrength = swingBase * 15;  // 動作擴大係數，可調大一點
             const swingStrength = 10;
-            set(angleXIndex, Math.sin(now * 1.5) * swingStrength);
-            set(angleYIndex, Math.sin(now * 0.8 + 1) * swingStrength * 0.5);
-            set(bodyXIndex, Math.cos(now * 0.2) * swingStrength * 0.4);
-            set(mouthFormIndex, Math.sin(now * 1.5) * 0.3);
+            // 頭部左右搖擺（平滑）
+            model.setParamFloat("PARAM_ANGLE_X", Math.sin(time * 1.5) * swingStrength);
 
-            // 眨眼邏輯
-            const elapsed = now - lastBlinkTime;
-            if (!isBlinking && elapsed >= nextBlinkDelay) {
-              isBlinking = true;
-              blinkProgress = 0;
+            // 頭部上下微動（像點頭）
+            model.setParamFloat("PARAM_ANGLE_Y", Math.sin(time * 0.8 + 1) * swingStrength * 0.5);
+
+            // 身體左右微擺（跟著音量）
+            model.setParamFloat("PARAM_BODY_X", Math.cos(time * 0.2) * swingStrength * 0.4);
+
+            // 嘴型變化（嘴角彎度，可表情更豐富）
+            model.setParamFloat("PARAM_MOUTH_FORM", Math.sin(time * 1.5) * 0.3);
+
+            // 眨眼控制（使用 sin 波形模擬自然眨眼）
+            let lastBlinkTime = 0;
+            let nextBlinkDelay = getRandomBlinkDelay();
+            let blinkProgress = 0;
+            let isBlinking = false;
+
+            function getRandomBlinkDelay() {
+              return 3 + Math.random() * 3; // 每 3~6 秒眨一次眼
             }
 
-            if (isBlinking) {
-              blinkProgress += 0.1;
-              const blinkValue = Math.sin(Math.PI * blinkProgress);
-              set(eyeLOpenIndex, 1 - blinkValue);
-              set(eyeROpenIndex, 1 - blinkValue);
-              if (blinkProgress >= 1) {
-                isBlinking = false;
-                lastBlinkTime = now;
-                nextBlinkDelay = getRandomBlinkDelay();
+            function updateBlink(time) {
+              const elapsed = time - lastBlinkTime;
+
+              if (!isBlinking && elapsed >= nextBlinkDelay) {
+                // 開始眨眼
+                isBlinking = true;
+                blinkProgress = 0;
+              }
+
+              if (isBlinking) {
+                blinkProgress += 0.1; // 調整這個值控制眨眼速度
+                const blinkValue = Math.sin(Math.PI * blinkProgress); // 0~1~0 過程
+
+                model.setParamFloat("PARAM_EYE_L_OPEN", 1 - blinkValue);
+                model.setParamFloat("PARAM_EYE_R_OPEN", 1 - blinkValue);
+
+                if (blinkProgress >= 1) {
+                  // 完成眨眼
+                  isBlinking = false;
+                  lastBlinkTime = time;
+                  nextBlinkDelay = getRandomBlinkDelay();
+                }
               }
             }
-
-            // 眼球漂移
-            set(eyeBallXIndex, Math.sin(now * 0.3) * 0.1);
-
+            
+            // 可選：眼球輕微左右漂移（避免死魚眼）
+            const eyeBallX = Math.sin(time * 0.3) * 0.1;
+            model.setParamFloat("PARAM_EYE_BALL_X", eyeBallX);
+            
+            updateBlink(time);
             model.update();
             live2dModel.update();
+
             requestAnimationFrame(tick);
           };
 
-          audioContext.resume().then(() => tick());
+          audioContext.resume().then(() => {
+            tick(); // 🟢 啟動嘴型動畫
+          });
 
           audio.onended = () => {
             stopped = true;
-            set(mouthIndex, 0);
+            model.setParamFloat(paramId, 0);
             model.update();
             console.log("✅ 嘴型動畫結束");
           };
@@ -317,7 +310,7 @@
         async function playVoiceWithMouthSync(live2dModel, mp3Url) {
           const base64 = await fetchMp3AsBase64(mp3Url);
           const audio = document.getElementById("voice");
-          audio.src = `data:audio/mpeg;base64,${base64}`;
+          audio.src = `data:audio/wav;base64,${base64}`;
           audio.crossOrigin = "anonymous";
           await audio.play();
           startMouthAnimation(live2dModel, audio);
