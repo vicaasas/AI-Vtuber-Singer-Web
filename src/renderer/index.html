@@ -115,36 +115,6 @@
       // const mp3Url = "https://2871-219-70-65-54.ngrok-free.app/music/sing_opt/vocal.mp3";
       // playVoiceWithMouthSync(window.live2dModel, mp3Url);
         // 下載 MP3 並轉 base64
-
-        function getRandomBlinkDelay() {
-          return 3 + Math.random() * 3; // 每 3~6 秒眨一次眼
-        }
-
-        function updateBlink(time) {
-          const elapsed = time - lastBlinkTime;
-
-          if (!isBlinking && elapsed >= nextBlinkDelay) {
-            // 開始眨眼
-            isBlinking = true;
-            blinkProgress = 0;
-          }
-
-          if (isBlinking) {
-            blinkProgress += 0.1; // 調整這個值控制眨眼速度
-            const blinkValue = Math.sin(Math.PI * blinkProgress); // 0~1~0 過程
-
-            model.setParamFloat("PARAM_EYE_L_OPEN", 1 - blinkValue);
-            model.setParamFloat("PARAM_EYE_R_OPEN", 1 - blinkValue);
-
-            if (blinkProgress >= 1) {
-              // 完成眨眼
-              isBlinking = false;
-              lastBlinkTime = time;
-              nextBlinkDelay = getRandomBlinkDelay();
-            }
-          }
-        }
-
         async function fetchMp3AsBase64(url) {
           const response = await fetch(url,
             {
@@ -166,7 +136,6 @@
           });
         }
 
-
         // 嘴型動畫控制器
         function startMouthAnimation(live2dModel, audio) {
           const model = live2dModel?.internalModel?.coreModel;
@@ -175,25 +144,37 @@
             return;
           }
 
+          // 停用預設控制器
+          if (live2dModel.internalModel.eyeBlink) {
+            live2dModel.internalModel.eyeBlink = undefined;
+          }
+          if (live2dModel.internalModel.motionManager) {
+            live2dModel.internalModel.motionManager.stopAllMotions();
+          }
+
           const paramIds = model._parameterIds || model.parameters?.ids || [];
-          const mouthIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("mouth") && id.toLowerCase().includes("open")
-          );
-          const mouthFormIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("mouthform")
-          );
-          const eyeLOpenIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("eye") && id.toLowerCase().includes("l") && id.toLowerCase().includes("open")
-          );
-          const eyeROpenIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("eye") && id.toLowerCase().includes("r") && id.toLowerCase().includes("open")
-          );
-          const eyeBallXIndex = paramIds.findIndex(id =>
-            id.toLowerCase().includes("eyeballx")
-          );
-          const angleXIndex = paramIds.findIndex(id => id.toLowerCase() === "paramanglex");
-          const angleYIndex = paramIds.findIndex(id => id.toLowerCase() === "paramangley");
-          const bodyXIndex = paramIds.findIndex(id => id.toLowerCase() === "parambodyx");
+          const getIndex = (name) => paramIds.findIndex(id => id.toLowerCase() === name.toLowerCase());
+
+          const mouthIndex = getIndex("ParamMouthOpenY");
+          const mouthFormIndex = getIndex("ParamMouthForm");
+          const eyeLOpenIndex = getIndex("ParamEyeLOpen");
+          const eyeROpenIndex = getIndex("ParamEyeROpen");
+          const eyeBallXIndex = getIndex("ParamEyeBallX");
+          const angleXIndex = getIndex("ParamAngleX");
+          const angleYIndex = getIndex("ParamAngleY");
+          const angleZIndex = getIndex("ParamAngleZ");
+          const bodyXIndex = getIndex("ParamBodyAngleX");
+          const bodyYIndex = getIndex("ParamBodyAngleY");
+          const bodyZIndex = getIndex("ParamBodyAngleZ");
+          const breathIndex = getIndex("ParamBreath");
+          const browLYIndex = getIndex("ParamBrowLY");
+          const browRYIndex = getIndex("ParamBrowRY");
+          // const Param12 = getIndex("Param12");//左耳
+          // const Param15 = getIndex("Param15");//右耳
+
+          const earIndices = [34, 35, 37, 38]; // Param10 ~ Param15
+          const earAmplitude = 30; // 擺動範圍，可調大一點
+          const earSpeed = 1.5; // 擺動速度（越大越快）
 
           const set = (index, val) => {
             if (index >= 0) model.setParameterValueByIndex(index, val);
@@ -214,9 +195,12 @@
           let displayedVolume = 0;
           const smoothing = 0.6;
           const decayRate = 0.02;
-
           let silentFrameCount = 0;
           const maxSilentFrames = 30;
+
+          let initialized = false;
+          const initialDuration = 0.2; // 秒
+          let initStartTime = null;
 
           // 眨眼狀態
           let lastBlinkTime = 0;
@@ -224,12 +208,49 @@
           let blinkProgress = 0;
           let isBlinking = false;
 
-          function getRandomBlinkDelay() {
-            return 2 + Math.random() * 3;
-          }
+          const getRandomBlinkDelay = () => 2 + Math.random() * 3;
 
-          const tick = () => {
-            const now = performance.now() / 1000;
+          const tick = (timestamp) => {
+            if (!initStartTime) {
+              initStartTime = timestamp;
+
+              // ⭐ 記錄開始時參數
+              initialParams = {
+                angleX: model.getParameterValueByIndex(angleXIndex),
+                angleY: model.getParameterValueByIndex(angleYIndex),
+                angleZ: model.getParameterValueByIndex(angleZIndex),
+                bodyX: model.getParameterValueByIndex(bodyXIndex),
+                bodyY: model.getParameterValueByIndex(bodyYIndex),
+                bodyZ: model.getParameterValueByIndex(bodyZIndex),
+                mouth: model.getParameterValueByIndex(mouthIndex),
+                mouthForm: model.getParameterValueByIndex(mouthFormIndex),
+              };
+            }
+            const now = (timestamp - initStartTime) / 1000; // 秒
+
+            if (!initialized) {
+              const t = Math.min(now / initialDuration, 1);
+              set(angleXIndex, model.getParameterValueByIndex(angleXIndex) * (1 - t));
+              set(angleYIndex, model.getParameterValueByIndex(angleYIndex) * (1 - t));
+              set(angleZIndex, model.getParameterValueByIndex(angleZIndex) * (1 - t));
+              set(bodyXIndex, model.getParameterValueByIndex(bodyXIndex) * (1 - t));
+              set(bodyYIndex, model.getParameterValueByIndex(bodyYIndex) * (1 - t));
+              set(bodyZIndex, model.getParameterValueByIndex(bodyZIndex) * (1 - t));
+              set(mouthIndex, 0);
+              set(mouthFormIndex, 0);
+
+              if (t >= 1) {
+                initialized = true;
+                initStartTime = timestamp; // 重設時間起點
+              }
+
+              model.update();
+              live2dModel.update();
+              requestAnimationFrame(tick);
+              return;
+            }
+
+            const time = (timestamp - initStartTime) / 1000;
 
             if (audio.paused || audio.ended) {
               if (!stopped) {
@@ -252,8 +273,7 @@
             analyser.getByteFrequencyData(dataArray);
             const slice = dataArray.slice(0, dataArray.length / 3);
             const avg = slice.reduce((sum, val) => sum + val, 0) / slice.length;
-
-            let volume = Math.min(avg / 196, 1);
+            const volume = Math.min(avg / 196, 1);
             smoothedVolume = smoothing * smoothedVolume + (1 - smoothing) * volume;
 
             if (smoothedVolume < 0.02) {
@@ -270,41 +290,65 @@
 
             set(mouthIndex, Math.max(displayedVolume, 0.03));
 
-            // 擺頭 + 身體 + 嘴型表情
             const swingStrength = 10;
-            set(angleXIndex, Math.sin(now * 1.5) * swingStrength);
-            set(angleYIndex, Math.sin(now * 0.8 + 1) * swingStrength * 0.5);
-            set(bodyXIndex, Math.cos(now * 0.2) * swingStrength * 0.4);
-            set(mouthFormIndex, Math.sin(now * 1.5) * 0.3);
+            set(angleXIndex, Math.sin(time * 1.5) * swingStrength);
+            set(angleYIndex, Math.sin(time * 0.8 + 1) * swingStrength * 0.5);
+            set(angleZIndex, Math.sin(time * 0.6) * swingStrength * 0.2);
+            set(bodyXIndex, Math.cos(time * 0.2) * swingStrength * 0.4);
+            set(bodyYIndex, Math.sin(time * 0.2) * swingStrength * 0.2);
+            set(bodyZIndex, Math.sin(time * 0.5) * swingStrength * 0.2);
+            set(mouthFormIndex, Math.sin(time * 1.5) * 0.3);
+            set(breathIndex, (Math.sin(time * 0.4) + 1) / 2);
+            set(browLYIndex, Math.sin(time * 1.5) * 0.5);
+            set(browRYIndex, Math.sin(time * 1.7) * 0.5);
+            // set(Param12, Math.sin(time * 1.7) * 10); 
+            // set(Param15, Math.sin(time * 1.7) * 10); 
+            earIndices.forEach((index, i) => {
+            const phaseOffset = i * 0.5; // 每個耳朵參數不同步，產生自然感
+            const earValue = Math.sin(time * earSpeed + phaseOffset) * earAmplitude;
+              set(index, earValue);
+            });
 
-            // 眨眼邏輯
-            const elapsed = now - lastBlinkTime;
+            // 👁 眨眼雙段平滑
+            const blinkDuration = 1.5;
+            const halfDuration = blinkDuration / 2;
+            const elapsed = time - lastBlinkTime;
+
             if (!isBlinking && elapsed >= nextBlinkDelay) {
               isBlinking = true;
               blinkProgress = 0;
             }
 
             if (isBlinking) {
-              blinkProgress += 0.1;
-              const blinkValue = Math.sin(Math.PI * blinkProgress);
-              set(eyeLOpenIndex, 1 - blinkValue);
-              set(eyeROpenIndex, 1 - blinkValue);
-              if (blinkProgress >= 1) {
+              blinkProgress += 1 / 60;
+              let eyeOpenVal = 1;
+
+              if (blinkProgress <= halfDuration) {
+                const t = blinkProgress / halfDuration;
+                eyeOpenVal = 1 - 0.5 * (1 - Math.cos(Math.PI * t)); // 慢閉
+              } else if (blinkProgress <= blinkDuration) {
+                const t = (blinkProgress - halfDuration) / halfDuration;
+                eyeOpenVal = 0.5 * (1 - Math.cos(Math.PI * t)); // 慢張
+              } else {
                 isBlinking = false;
-                lastBlinkTime = now;
+                lastBlinkTime = time;
                 nextBlinkDelay = getRandomBlinkDelay();
+                eyeOpenVal = 1;
               }
+
+              set(eyeLOpenIndex, eyeOpenVal);
+              set(eyeROpenIndex, eyeOpenVal);
             }
 
-            // 眼球漂移
-            set(eyeBallXIndex, Math.sin(now * 0.3) * 0.1);
+            // 👁 眼球輕微漂移
+            set(eyeBallXIndex, Math.sin(time * 0.3) * 0.1);
 
             model.update();
             live2dModel.update();
             requestAnimationFrame(tick);
           };
 
-          audioContext.resume().then(() => tick());
+          audioContext.resume().then(() => requestAnimationFrame(tick));
 
           audio.onended = () => {
             stopped = true;
