@@ -1,9 +1,10 @@
 /* eslint-disable */
 import { Tabs } from '@chakra-ui/react'
-import { FiCamera, FiMonitor } from 'react-icons/fi'
+import { FiCamera, FiMonitor, FiMusic} from 'react-icons/fi'
 import { sidebarStyles } from './sidebar-styles'
 import CameraPanel from './camera-panel'
 import ScreenPanel from './screen-panel'
+import MusicPanel from './music-panel'
 
 function BottomTab(): JSX.Element {
   return (
@@ -21,6 +22,11 @@ function BottomTab(): JSX.Element {
           <FiMonitor />
           Screen
         </Tabs.Trigger>
+
+        <Tabs.Trigger value="music" {...sidebarStyles.bottomTab.trigger}>
+          <FiMusic />
+          Music
+        </Tabs.Trigger>
       </Tabs.List>
 
       <Tabs.Content value="camera">
@@ -29,6 +35,10 @@ function BottomTab(): JSX.Element {
       
       <Tabs.Content value="screen">
         <ScreenPanel />
+      </Tabs.Content>
+
+      <Tabs.Content value="music">
+        < MusicPanel/>
       </Tabs.Content>
     </Tabs.Root>
   );
