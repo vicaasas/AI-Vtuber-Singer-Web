@@ -48,7 +48,8 @@
       //         window.live2dModel.speak(`data:audio/wav;base64,${base64}`);
       //       }
       //     });
-      const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
+      // const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
+      const ws = new WebSocket("ws://127.0.0.1:12393/ws_music");
       ws.onopen = () => console.log("✅ WebSocket 已連線");
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
