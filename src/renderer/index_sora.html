@@ -48,8 +48,7 @@
       //         window.live2dModel.speak(`data:audio/wav;base64,${base64}`);
       //       }
       //     });
-      // const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
-      const ws = new WebSocket("ws://127.0.0.1:12393/ws_music");
+      const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
       ws.onopen = () => console.log("✅ WebSocket 已連線");
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -117,7 +116,6 @@
       // playVoiceWithMouthSync(window.live2dModel, mp3Url);
         // 下載 MP3 並轉 base64
         async function fetchMp3AsBase64(url) {
-          console.log("📦 正在下載音訊 URL：", url);  // ✅ 這行是你要的 log
           const response = await fetch(url,
             {
               headers: {
@@ -165,6 +163,7 @@
           const angleXIndex = getIndex("ParamAngleX");
           const angleYIndex = getIndex("ParamAngleY");
           const angleZIndex = getIndex("ParamAngleZ");
+          const BodyAngleZ2 = getIndex("ParamBodyAngleZ2");
           const bodyXIndex = getIndex("ParamBodyAngleX");
           const bodyYIndex = getIndex("ParamBodyAngleY");
           const bodyZIndex = getIndex("ParamBodyAngleZ");
@@ -291,14 +290,16 @@
             }
 
             set(mouthIndex, Math.max(displayedVolume, 0.03));
-
+            const bodySwingStrength = 8 * Math.min(displayedVolume + 0.05, 1);
             const swingStrength = 10;
-            set(angleXIndex, Math.sin(time * 1.5) * swingStrength);
+            set(angleXIndex, Math.sin(time * 1.5) * swingStrength * 0.8);
             set(angleYIndex, Math.sin(time * 0.8 + 1) * swingStrength * 0.5);
             set(angleZIndex, Math.sin(time * 0.6) * swingStrength * 0.2);
-            set(bodyXIndex, Math.cos(time * 0.2) * swingStrength * 0.4);
+            set(bodyXIndex, Math.cos(time * 0.2) * swingStrength * 0.6);
             set(bodyYIndex, Math.sin(time * 0.2) * swingStrength * 0.2);
-            set(bodyZIndex, Math.sin(time * 0.5) * swingStrength * 0.2);
+            // set(bodyZIndex, Math.sin(time * 0.5) * swingStrength * 0.2);
+            set(bodyZIndex, Math.sin(time * 2.0) * bodySwingStrength * 0.4);
+            set(BodyAngleZ2, Math.sin(time * 2.0) * bodySwingStrength * 1.2);
             set(mouthFormIndex, Math.sin(time * 1.5) * 0.3);
             set(breathIndex, (Math.sin(time * 0.4) + 1) / 2);
             set(browLYIndex, Math.sin(time * 1.5) * 0.5);
@@ -341,6 +342,44 @@
               set(eyeLOpenIndex, eyeOpenVal);
               set(eyeROpenIndex, eyeOpenVal);
             }
+            const leftHandParams = [
+              { id: "Param",  amplitude: 10, speed: 0.9, phase: 0 },     // 上臂
+              { id: "Param2", amplitude: 8,  speed: 1.1, phase: 0.4 },   // 前臂
+              { id: "Param3", amplitude: 5,  speed: 1.4, phase: 0.8 },   // 手腕
+              { id: "Param4", amplitude: 4,  speed: 1.7, phase: 1.2 }    // 手掌
+            ];
+
+
+            const rightHandParams = [
+              { id: "Param5", amplitude: 16, speed: 1.6, phase: 0 },     // 上臂
+              { id: "Param6", amplitude: 12, speed: 1.8, phase: 0.3 },   // 前臂
+              { id: "Param7", amplitude: 9,  speed: 2.0, phase: 0.6 },   // 手腕
+              { id: "Param8", amplitude: 7,  speed: 2.3, phase: 0.9 }    // 手掌
+            ];
+
+
+            function applyLimbSwing(params, volumeBoost = 1) {
+              params.forEach(p => {
+                const index = model.getParameterIndex(p.id);
+                if (index !== -1) {
+                  const baseWave = Math.sin(time * p.speed + p.phase);
+                  const pulseBeat = Math.sin(time * 4 + p.phase * 1.2); // 拍子點節奏
+                  const echoWave = Math.sin(time * 7 + p.phase * 2.1);  // 回彈感（細震）
+
+                  // 複合波形組合
+                  const val =
+                    (baseWave * 0.6 + pulseBeat * 0.3 + echoWave * 0.1) *
+                    p.amplitude * volumeBoost;
+
+                  set(index, val);
+                }
+              });
+            }
+
+            const volumeStrength = Math.min(displayedVolume / 2 + 0.1, 1.2);
+            applyLimbSwing(leftHandParams, volumeStrength);  // 左手
+            applyLimbSwing(rightHandParams, volumeStrength); // 右手
+
 
             // 👁 眼球輕微漂移
             set(eyeBallXIndex, Math.sin(time * 0.3) * 0.1);
