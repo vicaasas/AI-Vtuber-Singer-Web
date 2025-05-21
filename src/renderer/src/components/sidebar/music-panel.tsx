@@ -11,7 +11,7 @@ function MusicPanel(): JSX.Element {
     setIsSubmitting(true);
     try {
       // const response = await fetch('https://2871-219-70-65-54.ngrok-free.app/api/music', {
-      const response = await fetch('http://127.0.0.1:12393/api/music', {
+      const response = await fetch('http://localhost:12393/api/music', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

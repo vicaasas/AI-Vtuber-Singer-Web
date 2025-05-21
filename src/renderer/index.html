@@ -49,46 +49,83 @@
       //       }
       //     });
       // const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
+
+      var singQueue = [];
       const ws = new WebSocket("ws://127.0.0.1:12393/ws_music");
       ws.onopen = () => console.log("✅ WebSocket 已連線");
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
         if (!data.play_url || !data.play_background_url) return;
 
-        console.log("🔔 收到播放通知：", data.play_url);
+        console.log("🔔 收到播放通知：", data.play_url); 
 
-        const player = document.getElementById("player");
-        const voice = document.getElementById("voice");
+        if (!data.play_url || !data.play_background_url) return;
+        
+        if(data.id==0)isPlaying = true;
 
-        try {
-          // 載入背景音訊
-          const bgReady = new Promise((resolve) => {
-            player.src = data.play_background_url;
-            player.oncanplaythrough = () => resolve();
-          });
+        console.log("🎶 收到片段", data.id);
+        await scheduleSegment(data);
 
-          // 下載人聲音檔並轉 base64
-          const base64Voice = await fetchMp3AsBase64(data.play_url);
-          if (!base64Voice) throw new Error("🚫 人聲 MP3 下載失敗");
+        // if(data.id == 0){
+        //   player.src = data.play_background_url;
+        //   vocal.src = data.play_url;
+        // }
+        // const player = document.getElementById("player");
+        // const voice = document.getElementById("voice");
 
-          // 設定人聲來源
-          voice.src = `data:audio/wav;base64,${base64Voice}`;
-          voice.crossOrigin = "anonymous";
+        // try {
+        //   // 載入背景音訊
+        //   const bgReady = new Promise((resolve) => {
+        //     player.src = data.play_background_url;
+        //     player.oncanplaythrough = () => resolve();
+        //   });
 
-          // 確保背景音與人聲都 ready
-          await Promise.all([bgReady, voice.play()]);
+        //   // 下載人聲音檔並轉 base64
+        //   const base64Voice = await fetchMp3AsBase64(data.play_url);
+        //   if (!base64Voice) throw new Error("🚫 人聲 MP3 下載失敗");
 
-          // 播放背景與啟動動畫
-          player.play();
-          startMouthAnimation(window.live2dModel, voice);
+        //   // 設定人聲來源
+        //   voice.src = `data:audio/wav;base64,${base64Voice}`;
+        //   voice.crossOrigin = "anonymous";
 
-        } catch (err) {
-          console.error("⚠️ 播放失敗：", err);
-        }
+        //   // 確保背景音與人聲都 ready
+        //   await Promise.all([bgReady, voice.play()]);
+
+        //   // 播放背景與啟動動畫
+        //   player.play();
+        //   startMouthAnimation(window.live2dModel, voice);
+
+        // } catch (err) {
+        //   console.error("⚠️ 播放失敗：", err);
+        // }
       };
       
       ws.onopen = () => console.log("✅ WebSocket 已連線");
       ws.onclose = () => console.log("❌ WebSocket 關閉");
+
+      //audio標籤測試
+      // const player = document.getElementById("player");
+      // const vocal = document.getElementById("voice");
+      // var instrumentCurrent = 0;
+      // var vocalCurrent = 0;
+      // function playInstrumentNext() {
+      //   if (instrumentCurrent < instrumentQueue.length) {
+      //     player.src = instrumentQueue[instrumentCurrent].url;
+      //     player.play();
+      //     instrumentCurrent++;
+      //   }
+      // }
+      // function playVocalNext() {
+      //   if (vocalCurrent < vocalQueue.length) {
+      //     vocal.src = vocalQueue[vocalCurrent].url;
+      //     vocal.play();
+      //     vocalCurrent++;
+      //   }
+      // }
+
+      // 當播放結束時，自動播放下一段
+      // player.addEventListener("ended", playInstrumentNext);
+      // vocal.addEventListener("ended", playVocalNext);
 
       // async function fetchMp3AsBase64(mp3Url) {
       //     try {
@@ -137,21 +174,108 @@
           });
         }
 
-        // 嘴型動畫控制器
-        function startMouthAnimation(live2dModel, audio) {
-          const model = live2dModel?.internalModel?.coreModel;
+
+        let nextStartTime = 0; // 下一段的起始時間
+
+        var audioContext = new AudioContext();
+        async function scheduleSegment(frameInfo) {
+          const [instrumentBuffer, vocalBuffer] = await Promise.all([
+            loadAudioBuffer(frameInfo.play_background_url),
+            loadAudioBuffer(frameInfo.play_url)
+          ]);
+
+          const duration = instrumentBuffer.duration;
+          const startTime = Math.max(audioContext.currentTime, nextStartTime);
+
+          // 建立兩個 source，同時播放
+          const iSource = audioContext.createBufferSource();
+          iSource.buffer = instrumentBuffer;
+          iSource.connect(audioContext.destination);
+          iSource.start(startTime);
+
+          // const vSource = audioContext.createBufferSource();
+          // vSource.buffer = vocalBuffer;
+          // vSource.connect(audioContext.destination);
+          // vSource.start(startTime);
+          //startMouthAnimation(window.live2dModel, vocalBuffer, startTime);
+
+          console.log(startTime);
+          console.log(`🔊 播放一段 at ${startTime.toFixed(2)}s, 長度 ${duration.toFixed(2)}s`);
+
+          // 更新下一段起始時間
+          nextStartTime = startTime + duration;
+                              
+          singQueue.push({
+              id:frameInfo.id,
+              instrumentBuffer,
+              vocalBuffer,
+              startTime : startTime,
+              endTime:nextStartTime,
+              isPlaying:false,
+              isEnd:frameInfo.isEnd
+          });
+
+        }
+
+        async function loadAudioBuffer(url) {
+          const res = await fetch(url);
+          const arrayBuffer = await res.arrayBuffer();
+          return await audioContext.decodeAudioData(arrayBuffer);
+        }
+        
+        // async function playVoiceWithMouthSync(live2dModel, mp3Url) {
+        //   const base64 = await fetchMp3AsBase64(mp3Url);
+        //   const audio = document.getElementById("voice");
+        //   audio.src = `data:audio/mpeg;base64,${base64}`;
+        //   audio.crossOrigin = "anonymous";
+        //   await audio.play();
+        //   startMouthAnimation(live2dModel, audio);
+        // }
+
+        function RefreshModalAnimation(timestamp){
+          
+          RefreshMouthAnimation(timestamp);
+          requestAnimationFrame(RefreshModalAnimation);
+        }
+
+        var currentAnalyser = null;
+        function RefreshMouthAnimation(timestamp){
+
+          var now = audioContext.currentTime;
+          var currentSign = singQueue.find(q => now >= q.startTime && now < q.endTime);
+          const model = window.live2dModel?.internalModel?.coreModel;
+          if(currentSign==null){
+            if(currentAnalyser!=null){
+              model.update();
+              currentAnalyser = null;
+            }
+            return;
+          }
+          if(currentSign != null && currentSign.isPlaying == false){
+            const source =  audioContext.createBufferSource();
+            source.buffer = currentSign.vocalBuffer;
+            currentAnalyser = audioContext.createAnalyser();
+            currentAnalyser.fftSize = 512;
+
+            source.connect(currentAnalyser);
+            source.connect(audioContext.destination);
+
+            source.start(currentSign.startTime);
+            currentSign.isPlaying = true;
+          }
+
+
           if (!model) {
             console.error("🚫 找不到 coreModel");
             return;
           }
-
           // 停用預設控制器
-          if (live2dModel.internalModel.eyeBlink) {
-            live2dModel.internalModel.eyeBlink = undefined;
-          }
-          if (live2dModel.internalModel.motionManager) {
-            live2dModel.internalModel.motionManager.stopAllMotions();
-          }
+          // if (live2dModel.internalModel.eyeBlink) {
+          //   live2dModel.internalModel.eyeBlink = undefined;
+          // }
+          // if (live2dModel.internalModel.motionManager) {
+          //   live2dModel.internalModel.motionManager.stopAllMotions();
+          // }
 
           const paramIds = model._parameterIds || model.parameters?.ids || [];
           const getIndex = (name) => paramIds.findIndex(id => id.toLowerCase() === name.toLowerCase());
@@ -181,16 +305,6 @@
             if (index >= 0) model.setParameterValueByIndex(index, val);
           };
 
-          const audioContext = new AudioContext();
-          const source = audioContext.createMediaElementSource(audio);
-          const analyser = audioContext.createAnalyser();
-          analyser.fftSize = 512;
-
-          source.connect(analyser);
-          analyser.connect(audioContext.destination);
-
-          const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
           let stopped = false;
           let smoothedVolume = 0;
           let displayedVolume = 0;
@@ -208,70 +322,71 @@
           let nextBlinkDelay = 2 + Math.random() * 3;
           let blinkProgress = 0;
           let isBlinking = false;
-
+          var animationFrameId = null;
           const getRandomBlinkDelay = () => 2 + Math.random() * 3;
 
-          const tick = (timestamp) => {
-            if (!initStartTime) {
-              initStartTime = timestamp;
+            // if (!initStartTime) {
+            //   initStartTime = timestamp;
 
-              // ⭐ 記錄開始時參數
-              initialParams = {
-                angleX: model.getParameterValueByIndex(angleXIndex),
-                angleY: model.getParameterValueByIndex(angleYIndex),
-                angleZ: model.getParameterValueByIndex(angleZIndex),
-                bodyX: model.getParameterValueByIndex(bodyXIndex),
-                bodyY: model.getParameterValueByIndex(bodyYIndex),
-                bodyZ: model.getParameterValueByIndex(bodyZIndex),
-                mouth: model.getParameterValueByIndex(mouthIndex),
-                mouthForm: model.getParameterValueByIndex(mouthFormIndex),
-              };
-            }
-            const now = (timestamp - initStartTime) / 1000; // 秒
+            //   // ⭐ 記錄開始時參數
+            //   initialParams = {
+            //     angleX: model.getParameterValueByIndex(angleXIndex),
+            //     angleY: model.getParameterValueByIndex(angleYIndex),
+            //     angleZ: model.getParameterValueByIndex(angleZIndex),
+            //     bodyX: model.getParameterValueByIndex(bodyXIndex),
+            //     bodyY: model.getParameterValueByIndex(bodyYIndex),
+            //     bodyZ: model.getParameterValueByIndex(bodyZIndex),
+            //     mouth: model.getParameterValueByIndex(mouthIndex),
+            //     mouthForm: model.getParameterValueByIndex(mouthFormIndex),
+            //   };
+            // }
+            // const now = (timestamp - initStartTime) / 1000; // 秒
+            // if (!initialized) {
+            //   const t = Math.min(now / initialDuration, 1);
+            //   set(angleXIndex, model.getParameterValueByIndex(angleXIndex) * (1 - t));
+            //   set(angleYIndex, model.getParameterValueByIndex(angleYIndex) * (1 - t));
+            //   set(angleZIndex, model.getParameterValueByIndex(angleZIndex) * (1 - t));
+            //   set(bodyXIndex, model.getParameterValueByIndex(bodyXIndex) * (1 - t));
+            //   set(bodyYIndex, model.getParameterValueByIndex(bodyYIndex) * (1 - t));
+            //   set(bodyZIndex, model.getParameterValueByIndex(bodyZIndex) * (1 - t));
+            //   set(mouthIndex, 0);
+            //   set(mouthFormIndex, 0);
 
-            if (!initialized) {
-              const t = Math.min(now / initialDuration, 1);
-              set(angleXIndex, model.getParameterValueByIndex(angleXIndex) * (1 - t));
-              set(angleYIndex, model.getParameterValueByIndex(angleYIndex) * (1 - t));
-              set(angleZIndex, model.getParameterValueByIndex(angleZIndex) * (1 - t));
-              set(bodyXIndex, model.getParameterValueByIndex(bodyXIndex) * (1 - t));
-              set(bodyYIndex, model.getParameterValueByIndex(bodyYIndex) * (1 - t));
-              set(bodyZIndex, model.getParameterValueByIndex(bodyZIndex) * (1 - t));
-              set(mouthIndex, 0);
-              set(mouthFormIndex, 0);
+            //   if (t >= 1) {
+            //     initialized = true;
+            //     initStartTime = timestamp; // 重設時間起點
+            //   }
 
-              if (t >= 1) {
-                initialized = true;
-                initStartTime = timestamp; // 重設時間起點
-              }
+            //   model.update();
+            //   live2dModel.update();
+            //   //requestAnimationFrame(tick);
+            //   return;
+            // }
 
-              model.update();
-              live2dModel.update();
-              requestAnimationFrame(tick);
-              return;
-            }
+          const time = (timestamp - currentSign.startTime) / 1000;
+          // console.log(timestamp);
 
-            const time = (timestamp - initStartTime) / 1000;
+          const dataArray = new Uint8Array(currentAnalyser.frequencyBinCount);
 
-            if (audio.paused || audio.ended) {
-              if (!stopped) {
-                displayedVolume = Math.max(0, displayedVolume - decayRate);
-                set(mouthIndex, displayedVolume);
-                model.update();
-                live2dModel.update();
+            // if (source.paused || source.ended) {
+            //   if (!stopped) {
+            //     displayedVolume = Math.max(0, displayedVolume - decayRate);
+            //     set(mouthIndex, displayedVolume);
+            //     model.update();
+            //     live2dModel.update();
 
-                if (displayedVolume > 0) {
-                  requestAnimationFrame(tick);
-                  return;
-                }
+            //     if (displayedVolume > 0) {
+            //       requestAnimationFrame(tick);
+            //       return;
+            //     }
 
-                console.log("✅ 嘴型動畫結束");
-                stopped = true;
-              }
-              return;
-            }
+            //     console.log("✅ 嘴型動畫結束");
+            //     stopped = true;
+            //   }
+            //   return;
+            // }
 
-            analyser.getByteFrequencyData(dataArray);
+            currentAnalyser.getByteFrequencyData(dataArray);
             const slice = dataArray.slice(0, dataArray.length / 3);
             const avg = slice.reduce((sum, val) => sum + val, 0) / slice.length;
             const volume = Math.min(avg / 196, 1);
@@ -345,29 +460,9 @@
             set(eyeBallXIndex, Math.sin(time * 0.3) * 0.1);
 
             model.update();
-            live2dModel.update();
-            requestAnimationFrame(tick);
-          };
-
-          audioContext.resume().then(() => requestAnimationFrame(tick));
-
-          audio.onended = () => {
-            stopped = true;
-            set(mouthIndex, 0);
-            model.update();
-            console.log("✅ 嘴型動畫結束");
-          };
-        }
-        
-        async function playVoiceWithMouthSync(live2dModel, mp3Url) {
-          const base64 = await fetchMp3AsBase64(mp3Url);
-          const audio = document.getElementById("voice");
-          audio.src = `data:audio/mpeg;base64,${base64}`;
-          audio.crossOrigin = "anonymous";
-          await audio.play();
-          startMouthAnimation(live2dModel, audio);
         }
 
+        requestAnimationFrame(RefreshModalAnimation);
     </script>
   </body>
 </html>
