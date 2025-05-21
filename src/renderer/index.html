@@ -154,6 +154,7 @@
       // playVoiceWithMouthSync(window.live2dModel, mp3Url);
         // 下載 MP3 並轉 base64
         async function fetchMp3AsBase64(url) {
+          console.log("📦 正在下載音訊 URL：", url);  // ✅ 這行是你要的 log
           const response = await fetch(url,
             {
               headers: {
