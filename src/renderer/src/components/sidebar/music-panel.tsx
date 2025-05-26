@@ -16,7 +16,7 @@ function MusicPanel(): JSX.Element {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url: musicUrl }),
+        body: JSON.stringify({ url: musicUrl,id:(window as any).ws_musicId }),
       });
 
       if (!response.ok) throw new Error('伺服器錯誤');
@@ -30,12 +30,20 @@ function MusicPanel(): JSX.Element {
     }
   };
 
+  function stopSing(){
+    (window as any).current_vocalSource.stop();
+    (window as any).current_instrumentSource.stop();
+    (window as any).stopTime = (window as any).audioContext.currentTime - (window as any).initStartTime;
+    (window as any).initStartTime = 99999;
+  }
+
   return (
     <Box p={4} border="1px solid" borderColor="gray.600" borderRadius="md" bg="gray.800">
       <Text fontSize="lg" fontWeight="bold" mb={2} color="white">
         播放
       </Text>
       <Input
+        id="PlayMusic"
         placeholder="輸入音樂網址"
         value={musicUrl}
         onChange={(e) => setMusicUrl(e.target.value)}
@@ -50,6 +58,13 @@ function MusicPanel(): JSX.Element {
           disabled={!musicUrl.trim() || isSubmitting}
         >
           送出
+        </Button>
+        <Button
+          id="StopSing"
+          colorScheme="teal"
+          onClick={stopSing}
+        >
+          停止
         </Button>
       </Box>
     </Box>

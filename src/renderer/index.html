@@ -13,6 +13,15 @@
     <audio id="voice" hidden></audio>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      function PlayAll(){
+        fetch('http://localhost:12393/sing', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id:ws_musicId }),
+        });
+      }
       // const mockData = {
       //   play_url: "https://2871-219-70-65-54.ngrok-free.app/music/sing_opt/vocal.mp3",
       //   play_background_url: "https://2871-219-70-65-54.ngrok-free.app/music/sing_opt/instrument.mp3"
@@ -51,17 +60,25 @@
       // const ws = new WebSocket("wss://2871-219-70-65-54.ngrok-free.app/ws_music");
 
       var singQueue = [];
+      var ws_musicId = 0;
       const ws = new WebSocket("ws://127.0.0.1:12393/ws_music");
       ws.onopen = () => console.log("✅ WebSocket 已連線");
+      ws.onclose = () => console.log("❌ WebSocket 關閉");
       ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
+        if(data.type == 'init'){
+          ws_musicId = data.id;
+          return;
+        }
         if (!data.play_url || !data.play_background_url) return;
 
         console.log("🔔 收到播放通知：", data.play_url); 
 
         if (!data.play_url || !data.play_background_url) return;
         
-        if(data.id==0)isPlaying = true;
+        if(data.id==0){
+           document.getElementById("PlayMusic").setAttribute("disabled",true);
+        }
 
         console.log("🎶 收到片段", data.id);
         await scheduleSegment(data);
@@ -100,8 +117,7 @@
         // }
       };
       
-      ws.onopen = () => console.log("✅ WebSocket 已連線");
-      ws.onclose = () => console.log("❌ WebSocket 關閉");
+
 
       //audio標籤測試
       // const player = document.getElementById("player");
@@ -177,7 +193,7 @@
 
 
         let nextStartTime = 0; // 下一段的起始時間
-
+        var initStartTime = 0;
         var audioContext = new AudioContext();
         async function scheduleSegment(frameInfo) {
           const [instrumentBuffer, vocalBuffer] = await Promise.all([
@@ -186,13 +202,16 @@
           ]);
 
           const duration = instrumentBuffer.duration;
-          const startTime = Math.max(audioContext.currentTime, nextStartTime);
+          const startTime = nextStartTime;//Math.max(audioContext.currentTime, nextStartTime);
 
+          if(frameInfo.id == 0){
+            initStartTime = audioContext.currentTime;
+          }
           // 建立兩個 source，同時播放
-          const iSource = audioContext.createBufferSource();
-          iSource.buffer = instrumentBuffer;
-          iSource.connect(audioContext.destination);
-          iSource.start(startTime);
+          // const iSource = audioContext.createBufferSource();
+          // iSource.buffer = instrumentBuffer;
+          // iSource.connect(audioContext.destination);
+          // iSource.start(initStartTime+startTime);
 
           // const vSource = audioContext.createBufferSource();
           // vSource.buffer = vocalBuffer;
@@ -222,8 +241,8 @@
           const res = await fetch(url);
           const arrayBuffer = await res.arrayBuffer();
           return await audioContext.decodeAudioData(arrayBuffer);
-        }
-        
+        }      
+
         // async function playVoiceWithMouthSync(live2dModel, mp3Url) {
         //   const base64 = await fetchMp3AsBase64(mp3Url);
         //   const audio = document.getElementById("voice");
@@ -233,36 +252,44 @@
         //   startMouthAnimation(live2dModel, audio);
         // }
 
-        function RefreshModalAnimation(timestamp){
-          
+        function RefreshModalAnimation(timestamp){  
           RefreshMouthAnimation(timestamp);
           requestAnimationFrame(RefreshModalAnimation);
         }
 
         var currentAnalyser = null;
+        var current_vocalSource = null;
+        var current_instrumentSource = null;
         function RefreshMouthAnimation(timestamp){
 
-          var now = audioContext.currentTime;
-          var currentSign = singQueue.find(q => now >= q.startTime && now < q.endTime);
+          var now = audioContext.currentTime-initStartTime;
+          var currentSing = singQueue.find(q => now >= q.startTime && now < q.endTime);
           const model = window.live2dModel?.internalModel?.coreModel;
-          if(currentSign==null){
+          if(currentSing==null){
             if(currentAnalyser!=null){
+              
               model.update();
               currentAnalyser = null;
+              document.getElementById("PlayMusic").removeAttribute("disabled");
             }
             return;
           }
-          if(currentSign != null && currentSign.isPlaying == false){
-            const source =  audioContext.createBufferSource();
-            source.buffer = currentSign.vocalBuffer;
+          if(currentSing != null && currentSing.isPlaying == false){
+            current_instrumentSource = audioContext.createBufferSource();
+            current_instrumentSource.buffer = currentSing.instrumentBuffer;
+            current_instrumentSource.connect(audioContext.destination);
+
+            current_vocalSource =  audioContext.createBufferSource();
+            current_vocalSource.buffer = currentSing.vocalBuffer;
             currentAnalyser = audioContext.createAnalyser();
             currentAnalyser.fftSize = 512;
 
-            source.connect(currentAnalyser);
-            source.connect(audioContext.destination);
+            current_vocalSource.connect(currentAnalyser);
+            current_vocalSource.connect(audioContext.destination);
 
-            source.start(currentSign.startTime);
-            currentSign.isPlaying = true;
+            current_instrumentSource.start(audioContext.currentTime);
+            current_vocalSource.start(audioContext.currentTime);
+            currentSing.isPlaying = true;
           }
 
 
@@ -316,7 +343,6 @@
 
           let initialized = false;
           const initialDuration = 0.2; // 秒
-          let initStartTime = null;
 
           // 眨眼狀態
           let lastBlinkTime = 0;
@@ -364,7 +390,7 @@
             //   return;
             // }
 
-          const time = (timestamp - currentSign.startTime) / 1000;
+          const time = (timestamp - currentSing.startTime) / 1000;
           // console.log(timestamp);
 
           const dataArray = new Uint8Array(currentAnalyser.frequencyBinCount);
