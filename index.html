@@ -1,0 +1,303 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Electron</title>
+    <script src="./libs/live2dcubismcore.min.js"></script>
+    <script src="./libs/live2d.min.js"></script>
+    <script type="module" crossorigin src="./assets/main-B8YPgWe8.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/main-6gNOTEMZ.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <audio id="player" controls autoplay style="display:none;"></audio>
+    <audio id="voice" hidden></audio>
+    <script>
+      window.onload = () =>{
+        requestAnimationFrame(RefreshModalAnimation);
+      }
+
+      function PlayAll(){
+        fetch('http://localhost:12393/sing', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id:ws_musicId }),
+        });
+      }
+
+      var singQueue = [];
+      var ws_musicId = 0;
+      const ws = new WebSocket("ws://127.0.0.1:12393/ws_music");
+      ws.onopen = () => console.log("✅ WebSocket 已連線");
+      ws.onclose = () => console.log("❌ WebSocket 關閉");
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        if(data.type == 'init'){
+          ws_musicId = data.id;
+          return;
+        }
+        if (!data.play_url || !data.play_background_url) return;
+
+        console.log("🔔 收到播放通知：", data.play_url); 
+
+        if (!data.play_url || !data.play_background_url) return;
+        
+        if(data.id==0){
+           document.getElementById("PlayMusic").setAttribute("disabled",true);
+        }
+
+        console.log("🎶 收到片段", data.id);
+        await scheduleSegment(data);
+      };
+      
+        // 下載 MP3 並轉 base64
+        async function fetchMp3AsBase64(url) {
+          console.log("📦 正在下載音訊 URL：", url);  // ✅ 這行是你要的 log
+          const response = await fetch(url,
+            {
+              headers: {
+                "ngrok-skip-browser-warning": "69420"
+              }
+            }
+          );
+          const blob = await response.blob();
+
+          return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = reader.result.split(',')[1]; // 去掉 data:audio/wav;base64,...
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+
+
+        let nextStartTime = 0; // 下一段的起始時間
+        var initStartTime = 0;
+        var audioContext = new AudioContext();
+        async function scheduleSegment(frameInfo) {
+          const [instrumentBuffer, vocalBuffer] = await Promise.all([
+            loadAudioBuffer(frameInfo.play_background_url),
+            loadAudioBuffer(frameInfo.play_url)
+          ]);
+
+          const duration = instrumentBuffer.duration;
+          const startTime = nextStartTime;
+
+          if(frameInfo.id == 0){
+            initStartTime = audioContext.currentTime;
+            window.live2dModel.emit('sing');
+          }
+
+          console.log(startTime);
+          console.log(`🔊 播放一段 at ${startTime.toFixed(2)}s, 長度 ${duration.toFixed(2)}s`);
+
+          // 更新下一段起始時間
+          nextStartTime = startTime + duration;
+                              
+          singQueue.push({
+              id:frameInfo.id,
+              instrumentBuffer,
+              vocalBuffer,
+              startTime : startTime,
+              endTime:nextStartTime,
+              isPlaying:false,
+              isEnd:frameInfo.isEnd
+          });
+
+        }
+
+        async function loadAudioBuffer(url) {
+          const res = await fetch(url);
+          const arrayBuffer = await res.arrayBuffer();
+          return await audioContext.decodeAudioData(arrayBuffer);
+        }      
+
+
+        function RefreshModalAnimation(timestamp){  
+          RefreshMouthAnimation(timestamp);
+          requestAnimationFrame(RefreshModalAnimation);
+        }
+
+        var currentAnalyser = null;
+        var current_vocalSource = null;
+        var current_instrumentSource = null;
+        function RefreshMouthAnimation(timestamp){
+
+          var now = audioContext.currentTime-initStartTime;
+          var currentSing = singQueue.find(q => now >= q.startTime && now < q.endTime);
+          const model = window.live2dModel?.internalModel?.coreModel;
+          if(currentSing==null){
+            if(currentAnalyser!=null){            
+              model.update();
+              currentAnalyser = null;
+              document.getElementById("PlayMusic").removeAttribute("disabled");
+              window.live2dModel.emit("singFinished");
+            }
+            return;
+          }
+          if(currentSing != null && currentSing.isPlaying == false){
+            current_instrumentSource = audioContext.createBufferSource();
+            current_instrumentSource.buffer = currentSing.instrumentBuffer;
+            current_instrumentSource.connect(audioContext.destination);
+
+            current_vocalSource =  audioContext.createBufferSource();
+            current_vocalSource.buffer = currentSing.vocalBuffer;
+            currentAnalyser = audioContext.createAnalyser();
+            currentAnalyser.fftSize = 512;
+
+            current_vocalSource.connect(currentAnalyser);
+            current_vocalSource.connect(audioContext.destination);
+
+            current_instrumentSource.start(audioContext.currentTime);
+            current_vocalSource.start(audioContext.currentTime);
+            currentSing.isPlaying = true;
+          }
+
+
+          if (!model) {
+            console.error("🚫 找不到 coreModel");
+            return;
+          }
+          // 停用預設控制器
+          // if (live2dModel.internalModel.eyeBlink) {
+          //   live2dModel.internalModel.eyeBlink = undefined;
+          // }
+          // if (live2dModel.internalModel.motionManager) {
+          //   live2dModel.internalModel.motionManager.stopAllMotions();
+          // }
+
+          const paramIds = model._parameterIds || model.parameters?.ids || [];
+          const getIndex = (name) => paramIds.findIndex(id => id.toLowerCase() === name.toLowerCase());
+
+          const mouthIndex = getIndex("ParamMouthOpenY");
+          const mouthFormIndex = getIndex("ParamMouthForm");
+          const eyeLOpenIndex = getIndex("ParamEyeLOpen");
+          const eyeROpenIndex = getIndex("ParamEyeROpen");
+          const eyeBallXIndex = getIndex("ParamEyeBallX");
+          const angleXIndex = getIndex("ParamAngleX");
+          const angleYIndex = getIndex("ParamAngleY");
+          const angleZIndex = getIndex("ParamAngleZ");
+          const bodyXIndex = getIndex("ParamBodyAngleX");
+          const bodyYIndex = getIndex("ParamBodyAngleY");
+          const bodyZIndex = getIndex("ParamBodyAngleZ");
+          const breathIndex = getIndex("ParamBreath");
+          const browLYIndex = getIndex("ParamBrowLY");
+          const browRYIndex = getIndex("ParamBrowRY");
+          // const Param12 = getIndex("Param12");//左耳
+          // const Param15 = getIndex("Param15");//右耳
+
+          const earIndices = [34, 35, 37, 38]; // Param10 ~ Param15
+          const earAmplitude = 30; // 擺動範圍，可調大一點
+          const earSpeed = 1.5; // 擺動速度（越大越快）
+
+          const set = (index, val) => {
+            if (index >= 0) model.setParameterValueByIndex(index, val);
+          };
+
+          let stopped = false;
+          let smoothedVolume = 0;
+          let displayedVolume = 0;
+          const smoothing = 0.6;
+          const decayRate = 0.02;
+          let silentFrameCount = 0;
+          const maxSilentFrames = 30;
+
+          let initialized = false;
+          const initialDuration = 0.2; // 秒
+
+          // 眨眼狀態
+          let lastBlinkTime = 0;
+          let nextBlinkDelay = 2 + Math.random() * 3;
+          let blinkProgress = 0;
+          let isBlinking = false;
+          var animationFrameId = null;
+          const getRandomBlinkDelay = () => 2 + Math.random() * 3;
+
+          const time = (timestamp - currentSing.startTime) / 1000;
+
+          const dataArray = new Uint8Array(currentAnalyser.frequencyBinCount);
+
+          currentAnalyser.getByteFrequencyData(dataArray);
+          const slice = dataArray.slice(0, dataArray.length / 3);
+          const avg = slice.reduce((sum, val) => sum + val, 0) / slice.length;
+          const volume = Math.min(avg / 196, 1);
+          smoothedVolume = smoothing * smoothedVolume + (1 - smoothing) * volume;
+
+          if (smoothedVolume < 0.02) {
+            silentFrameCount++;
+          } else {
+            silentFrameCount = 0;
+          }
+
+          if (silentFrameCount >= maxSilentFrames) {
+            displayedVolume = Math.max(0, displayedVolume - decayRate);
+          } else {
+            displayedVolume = smoothedVolume;
+          }
+
+          set(mouthIndex, Math.max(displayedVolume, 0.03));
+
+          const swingStrength = 10;
+          set(angleXIndex, Math.sin(time * 1.5) * swingStrength);
+          set(angleYIndex, Math.sin(time * 0.8 + 1) * swingStrength * 0.5);
+          set(angleZIndex, Math.sin(time * 0.6) * swingStrength * 0.2);
+          set(bodyXIndex, Math.cos(time * 0.2) * swingStrength * 0.4);
+          set(bodyYIndex, Math.sin(time * 0.2) * swingStrength * 0.2);
+          set(bodyZIndex, Math.sin(time * 0.5) * swingStrength * 0.2);
+          set(mouthFormIndex, Math.sin(time * 1.5) * 0.3);
+          set(breathIndex, (Math.sin(time * 0.4) + 1) / 2);
+          set(browLYIndex, Math.sin(time * 1.5) * 0.5);
+          set(browRYIndex, Math.sin(time * 1.7) * 0.5);
+          // set(Param12, Math.sin(time * 1.7) * 10); 
+          // set(Param15, Math.sin(time * 1.7) * 10); 
+          earIndices.forEach((index, i) => {
+          const phaseOffset = i * 0.5; // 每個耳朵參數不同步，產生自然感
+          const earValue = Math.sin(time * earSpeed + phaseOffset) * earAmplitude;
+            set(index, earValue);
+          });
+
+          // 👁 眨眼雙段平滑
+          const blinkDuration = 1.5;
+          const halfDuration = blinkDuration / 2;
+          const elapsed = time - lastBlinkTime;
+
+          if (!isBlinking && elapsed >= nextBlinkDelay) {
+            isBlinking = true;
+            blinkProgress = 0;
+          }
+
+          if (isBlinking) {
+            blinkProgress += 1 / 60;
+            let eyeOpenVal = 1;
+
+            if (blinkProgress <= halfDuration) {
+              const t = blinkProgress / halfDuration;
+              eyeOpenVal = 1 - 0.5 * (1 - Math.cos(Math.PI * t)); // 慢閉
+            } else if (blinkProgress <= blinkDuration) {
+              const t = (blinkProgress - halfDuration) / halfDuration;
+              eyeOpenVal = 0.5 * (1 - Math.cos(Math.PI * t)); // 慢張
+            } else {
+              isBlinking = false;
+              lastBlinkTime = time;
+              nextBlinkDelay = getRandomBlinkDelay();
+              eyeOpenVal = 1;
+            }
+
+            set(eyeLOpenIndex, eyeOpenVal);
+            set(eyeROpenIndex, eyeOpenVal);
+          }
+
+          // 👁 眼球輕微漂移
+          set(eyeBallXIndex, Math.sin(time * 0.3) * 0.1);
+
+          model.update();
+        }
+    </script>
+  </body>
+</html>
