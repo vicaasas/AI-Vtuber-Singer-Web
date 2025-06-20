@@ -7,6 +7,12 @@ import {
   MotionPreloadStrategy,
   MotionPriority,
 } from "pixi-live2d-display-lipsyncpatch";
+import { Emitter } from '@pixi/particle-emitter';
+import snowflakeImg from '@/assets/snowflake.png'; // ✅ 根據 alias 設定
+import heartImg from '@/assets/heart.png';
+import micImg from '@/assets/mic.png';
+import { gsap } from "gsap";
+
 import {
   ModelInfo,
   useLive2DConfig,
@@ -40,6 +46,9 @@ export const useLive2DModel = ({
   const { setAiState, aiState } = useAiState();
   const [isModelReady, setIsModelReady] = useState(false);
   const { forceIgnoreMouse } = useForceIgnoreMouse();
+  const [showMic, setShowMic] = useState(false);
+  const micUpdateRef = useRef<() => void>();
+  const micFadeRef = useRef<(delta: number)=>void>();
 
   // Cleanup function for Live2D model
   const cleanupModel = useCallback(() => {
@@ -280,6 +289,23 @@ export const useLive2DModel = ({
       model.on("pointerupoutside", () => {
         dragging = false;
       });
+
+      model.on("sing",() => {
+        if(modelRef.current==null)return;
+        setShowMic(true); // 顯示麥克風
+        modelRef.current?.scale.set(0.38);
+         const { width, height } = isPet
+        ? { width: window.innerWidth, height: window.innerHeight }
+        : containerRef.current?.getBoundingClientRect() || {
+          width: 0,
+          height: 0,
+        };
+        resetModelPosition(modelRef.current, width, height+700, modelInfo?.initialXshift, modelInfo?.initialYshift);
+      });
+
+      model.on("singFinished",() => {
+        setShowMic(false); // 顯示麥克風
+      });
     },
     [isPet, forceIgnoreMouse],
   );
@@ -349,6 +375,194 @@ export const useLive2DModel = ({
     }
   }, [isModelReady, setupModelInteractions, forceIgnoreMouse]);
 
+  useEffect(() => {
+    if (!appRef.current) return;
+
+    // 建立粒子容器
+    const snowContainer = new PIXI.Container();
+    const heartContainer = new PIXI.Container();
+
+    appRef.current.stage.addChild(snowContainer);
+    appRef.current.stage.addChild(heartContainer);
+
+    // 建立 emitter（發射器）
+    const emitter = new Emitter(
+      snowContainer,
+      {
+        lifetime: { min: 1, max: 2 },
+        frequency: 0.5,
+        emitterLifetime: -1,
+        maxParticles: 500,
+        pos: { x: 300, y: modelInfo?.initialYshift??0 },
+        behaviors: [
+          {
+            type: "alpha",
+            config: {
+              alpha: {
+                list: [{ value: 0.8, time: 0 }, { value: 0, time: 1 }],
+              },
+            },
+          },
+          {
+            type: "moveSpeed",
+            config: {
+              speed: {
+                list: [{ value: 100, time: 0 }, { value: 50, time: 1 }],
+              },
+            },
+          },
+          {
+            type: "scale",
+            config: {
+              scale: {
+                list: [{ value: 0.5, time: 0 }, { value: 0.1, time: 1 }],
+              },
+            },
+          },
+          {
+            type: 'textureSingle',
+            config: {
+                texture: PIXI.Texture.from(snowflakeImg)
+            }
+          }
+        ]
+      }
+    );
+
+    const heartEmitter = new Emitter(
+      heartContainer,
+      {
+        lifetime: { min: 1, max: 2 },
+        frequency: 0.2,
+        emitterLifetime: -1,
+        maxParticles: 500,
+        pos: { x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight },
+        behaviors: [
+          {
+            type: "alpha",
+            config: {
+              alpha: {
+                list: [{ value: 0.8, time: 0 }, { value: 0, time: 1 }],
+              },
+            },
+          },
+          {
+            type: "moveSpeed",
+            config: {
+              speed: {
+                list: [{ value: 100, time: 0 }, { value: 50, time: 1 }],
+              },
+            },
+          },
+          {
+            type: "scale",
+            config: {
+              scale: {
+                list: [{ value: Math.random() * 0.1 + 0.5, time: 0 }, { value: Math.random() * 0.1 + 0.1, time: 1 }],
+              },
+            },
+          },
+          {
+            type: 'textureSingle',
+            config: {
+                texture: PIXI.Texture.from(heartImg)
+            }
+          }
+        ]
+      }
+    );
+
+    var  setRandomPosition =(emitter)=> {
+      const x = Math.random() * window.innerWidth;
+      const y =  Math.random() * window.innerHeight;
+      emitter.updateSpawnPos(x, y);
+    }
+
+    // 每幀更新 emitter
+    let elapsed = Date.now();
+    const update = () => {
+      const now = Date.now();
+      emitter.update((now - elapsed) * 0.001);
+      heartEmitter.update((now - elapsed) * 0.001);
+      setRandomPosition(heartEmitter);
+          setRandomPosition(emitter);
+      elapsed = now;
+    };
+    appRef.current.ticker.add(update);
+
+    // 清除粒子與 container
+    return () => {
+      emitter.cleanup();
+      appRef.current?.ticker.remove(update);
+      appRef.current?.stage.removeChild(snowContainer);
+      appRef.current?.stage.removeChild(heartContainer);
+      snowContainer.destroy({ children: true });
+    };
+  }, [modelInfo?.initialXshift, modelInfo?.initialYshift]);
+
+  useEffect(() => {
+    if (!appRef.current) return;
+
+    if (showMic) {
+      const micTexture = PIXI.Texture.from(micImg);
+      const micSprite = new PIXI.Sprite(micTexture);
+      micSprite.x = (modelRef.current?.position.x??0);
+      micSprite.y = (modelRef.current?.position.y??0)+200;
+      micSprite.name = 'mic'; // 給它個名字方便移除
+      micSprite.alpha = 0;
+      appRef.current.stage.addChild(micSprite);
+
+
+      let alphaProgress = 0;
+      const fadeInTicker = (delta: number) => {
+        if (alphaProgress < 1) {
+          alphaProgress += delta * 0.05; // 每幀增加透明度（速度可調）
+          micSprite.alpha = Math.min(alphaProgress, 1);
+        }
+      };
+      const update = () => {
+        if (modelRef.current) {
+          
+          // 設定相對於 model 的局部座標 (例如 model 頭下方一點)
+          const localOffset = new PIXI.Point(-50, 1800); // 模型的 local Y 座標
+
+          // 將局部座標轉為全局座標
+          const globalPos = modelRef.current.toGlobal(localOffset);+
+
+          // 設定 micSprite 的位置為該全局座標
+          micSprite.position.set(globalPos.x, globalPos.y);
+          //配合 model scale 放大縮小
+          micSprite.scale.set(2 * modelRef.current.scale.x);
+          micSprite.rotation = -Math.PI / 6;
+        }
+      };
+      micUpdateRef.current = update;
+      micFadeRef.current = fadeInTicker;
+      appRef.current.ticker.add(fadeInTicker);
+      appRef.current.ticker.add(update);
+    } else {
+      const old = appRef.current.stage.getChildByName('mic');
+      if (old){
+        gsap.to(old, {
+          alpha: 0,
+          duration: 0.5,
+          onComplete: () => {
+            appRef.current?.stage.removeChild(old);
+          }
+        });
+      }
+      // 清除 ticker 更新
+      if (micUpdateRef.current) {
+        appRef.current?.ticker.remove(micUpdateRef.current);
+        micUpdateRef.current = undefined;
+      }
+      if (micFadeRef.current) {
+        appRef.current?.ticker.remove(micFadeRef.current);
+        micFadeRef.current = undefined;
+      }
+    }
+  }, [showMic]);
+
   return {
     canvasRef,
     appRef,
@@ -356,6 +570,7 @@ export const useLive2DModel = ({
     containerRef,
   };
 };
+
 
 const playRandomMotion = (model: Live2DModel, motionGroup: MotionWeightMap) => {
   if (!motionGroup || Object.keys(motionGroup).length === 0) return;
