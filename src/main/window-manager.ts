@@ -134,6 +134,7 @@ export class WindowManager {
     } else {
       this.window.loadFile(join(__dirname, '../renderer/index.html'));
     }
+    console.log('ELECTRON_RENDERER_URL =', process.env.ELECTRON_RENDERER_URL);
   }
 
   setWindowMode(mode: 'window' | 'pet'): void {

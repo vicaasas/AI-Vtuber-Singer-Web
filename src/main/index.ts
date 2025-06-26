@@ -134,3 +134,12 @@ app.on("before-quit", () => {
   menuManager.destroy();
   globalShortcut.unregisterAll();
 });
+
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  if (url.startsWith('https://localhost')) {
+    event.preventDefault();
+    callback(true); // 信任自簽證書
+  } else {
+    callback(false);
+  }
+});

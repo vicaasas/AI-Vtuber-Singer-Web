@@ -2,6 +2,7 @@ import { defineConfig, normalizePath } from 'vite';
 import path from 'path';
 import react from '@vitejs/plugin-react-swc';
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import fs from 'fs'
 
 const createConfig = (outDir: string) => ({
   plugins: [
@@ -36,6 +37,16 @@ const createConfig = (outDir: string) => ({
   publicDir: path.join(__dirname, 'src/renderer/public'),
   base: './',
   server: {
+    https: {
+      key: fs.readFileSync(path.resolve(__dirname, 'cert/cert.key')),
+      cert: fs.readFileSync(path.resolve(__dirname, 'cert/cert.crt'))
+    },
+     proxy: {
+    '/api': {
+      target: 'http://localhost:5000',
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api/, '/api'),
+    },
     port: 3000,
   },
   build: {

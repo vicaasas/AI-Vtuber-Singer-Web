@@ -175,8 +175,17 @@ export const useLive2DModel = ({
       setIsLoading(true);
       setAiState(AiStateEnum.LOADING);
 
+      var url;
+      if(modelInfo.url.includes("ngrok-free.app")){
+          url = `http://localhost:5000/proxy/live2d?url=${encodeURIComponent(
+            modelInfo.url.trim()
+          )}`;
+      }else{
+          url = modelInfo.url;
+      }
+
       // Initialize Live2D model with settings
-      const model = await Live2DModel.from(modelInfo.url, {
+      const model = await Live2DModel.from(url, {
         autoHitTest: true,
         autoFocus: modelInfo.pointerInteractive ?? false,
         autoUpdate: true,

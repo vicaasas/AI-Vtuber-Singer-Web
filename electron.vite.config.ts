@@ -3,6 +3,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { normalizePath } from 'vite';
+import fs from 'fs'
 
 export default defineConfig({
   main: {
@@ -18,6 +19,13 @@ export default defineConfig({
     }
   },
   renderer: {
+    // server: {
+    //   port: 3000,
+    //   https: {
+    //     key: fs.readFileSync(resolve(__dirname, 'cert/cert.key')),
+    //     cert: fs.readFileSync(resolve(__dirname, 'cert/cert.crt')),
+    //   },
+    // },
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),
