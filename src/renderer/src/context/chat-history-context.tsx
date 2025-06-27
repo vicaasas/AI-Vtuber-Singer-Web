@@ -94,6 +94,12 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
         }];
       }
 
+      // Check if the content is already included in the last message to avoid duplicates
+      if (lastMessage.content.includes(content)) {
+        console.log('Duplicate content detected, skipping append:', content);
+        return prevMessages;
+      }
+
       // Otherwise, merge with last AI message
       return [
         ...prevMessages.slice(0, -1),
