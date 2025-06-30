@@ -1,8 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useWebSocket } from '@/context/websocket-context';
 import { toaster } from '@/components/ui/toaster';
+import { useGroup } from "@/context/group-context";
 
 export const useGroupDrawer = () => {
+  const { selfName} = useGroup();
   const [isOpen, setIsOpen] = useState(false);
   const [inviteUid, setInviteUid] = useState('');
   const { sendMessage } = useWebSocket();
@@ -13,6 +15,14 @@ export const useGroupDrawer = () => {
       type: 'request-group-info',
     });
   }, [sendMessage]);
+
+  const handleChangeName = useCallback(async () =>{
+    sendMessage({
+      type: 'change-client-name',
+      client_name:selfName
+    });
+    return;
+  },[selfName,sendMessage,requestGroupInfo])
 
   const handleInvite = useCallback(async () => {
     if (!inviteUid.trim()) {
@@ -57,6 +67,7 @@ export const useGroupDrawer = () => {
   return {
     isOpen,
     setIsOpen,
+    handleChangeName,
     inviteUid,
     setInviteUid,
     handleInvite,

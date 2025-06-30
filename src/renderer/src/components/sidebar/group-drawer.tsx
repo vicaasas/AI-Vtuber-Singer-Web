@@ -22,11 +22,12 @@ interface GroupDrawerProps {
 }
 
 function GroupDrawer({ children }: GroupDrawerProps) {
-  const { selfUid, selfName,sortedGroupMembers, isOwner } = useGroup();
+  const { selfUid, selfName, setSelfName,sortedGroupMembers, isOwner } = useGroup();
   const {
     isOpen,
     setIsOpen,
     inviteUid,
+    handleChangeName,
     setInviteUid,
     handleInvite,
     handleRemove,
@@ -62,7 +63,18 @@ function GroupDrawer({ children }: GroupDrawerProps) {
             <Box {...sidebarStyles.groupDrawer.section}>
               <Text {...sidebarStyles.groupDrawer.sectionTitle}>Your Name</Text>
               <Box {...sidebarStyles.groupDrawer.memberItem}>
-                <Text {...sidebarStyles.groupDrawer.memberText}>{selfName}</Text>
+                   <Input
+                  value={selfName}
+                  onChange={(e) => setSelfName(e.target.value)}
+                  placeholder="Enter YourName Name"
+                  {...sidebarStyles.groupDrawer.input}
+                  />
+                    <Button
+                  onClick={handleChangeName}
+                  {...sidebarStyles.groupDrawer.button}
+                >
+                  Save
+                </Button>
                 <ClipboardRoot value={selfName}>
                   <ClipboardButton
                     {...sidebarStyles.groupDrawer.clipboardButton}
