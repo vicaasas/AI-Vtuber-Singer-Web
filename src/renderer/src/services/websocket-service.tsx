@@ -61,6 +61,7 @@ export interface MessageEvent {
   members?: string[];
   is_owner?: boolean;
   client_uid?: string;
+  client_name?:string;
   forwarded?: boolean;
   display_text?: DisplayText;
 }

@@ -32,7 +32,7 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
   const bgUrlContext = useBgUrl();
   const { confUid, setConfName, setConfUid, setConfigFiles } = useConfig();
   const [pendingModelInfo, setPendingModelInfo] = useState<ModelInfo | undefined>(undefined);
-  const { setSelfUid, setGroupMembers, setIsOwner } = useGroup();
+  const { setSelfUid, setSelfName, setGroupMembers, setIsOwner } = useGroup();
   const { startMic, stopMic, autoStartMicOnConvEnd } = useVAD();
   const autoStartMicOnConvEndRef = useRef(autoStartMicOnConvEnd);
   const { interrupt } = useInterrupt();
@@ -106,6 +106,9 @@ function WebSocketHandler({ children }: { children: React.ReactNode }) {
         }
         if (message.client_uid) {
           setSelfUid(message.client_uid);
+        }
+        if(message.client_name){
+          setSelfName(message.client_name);
         }
         setPendingModelInfo(message.model_info);
         // setModelInfo(message.model_info);

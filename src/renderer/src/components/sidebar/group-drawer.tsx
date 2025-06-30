@@ -22,7 +22,7 @@ interface GroupDrawerProps {
 }
 
 function GroupDrawer({ children }: GroupDrawerProps) {
-  const { selfUid, sortedGroupMembers, isOwner } = useGroup();
+  const { selfUid, selfName,sortedGroupMembers, isOwner } = useGroup();
   const {
     isOpen,
     setIsOpen,
@@ -59,6 +59,18 @@ function GroupDrawer({ children }: GroupDrawerProps) {
 
         <DrawerBody>
           <Box {...sidebarStyles.historyDrawer.listContainer}>
+            <Box {...sidebarStyles.groupDrawer.section}>
+              <Text {...sidebarStyles.groupDrawer.sectionTitle}>Your Name</Text>
+              <Box {...sidebarStyles.groupDrawer.memberItem}>
+                <Text {...sidebarStyles.groupDrawer.memberText}>{selfName}</Text>
+                <ClipboardRoot value={selfName}>
+                  <ClipboardButton
+                    {...sidebarStyles.groupDrawer.clipboardButton}
+                    size="sm"
+                  />
+                </ClipboardRoot>
+              </Box>
+            </Box>
             <Box {...sidebarStyles.groupDrawer.section}>
               <Text {...sidebarStyles.groupDrawer.sectionTitle}>Your UUID</Text>
               <Box {...sidebarStyles.groupDrawer.memberItem}>
