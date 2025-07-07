@@ -86,13 +86,15 @@
             loadAudioBuffer(frameInfo.play_url)
           ]);
 
-          const duration = instrumentBuffer.duration;
-          const startTime = nextStartTime;
-
           if(frameInfo.id == 0){
             initStartTime = audioContext.currentTime;
+            nextStartTime = 0;
+            singQueue = [];
             window.live2dModel.emit('sing');
           }
+
+          const duration = instrumentBuffer.duration;
+          const startTime = nextStartTime;
 
           console.log(startTime);
           console.log(`🔊 播放一段 at ${startTime.toFixed(2)}s, 長度 ${duration.toFixed(2)}s`);
@@ -136,6 +138,7 @@
             if(currentAnalyser!=null){            
               model.update();
               currentAnalyser = null;
+              singQueue = [];
               document.getElementById("PlayMusic").removeAttribute("disabled");
               window.live2dModel.emit("singFinished");
             }

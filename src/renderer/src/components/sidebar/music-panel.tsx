@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Box, Input, Button, Text } from '@chakra-ui/react';
+import { useWebSocket } from '@/context/websocket-context';
+
 
 function MusicPanel(): JSX.Element {
   const [musicUrl, setMusicUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { baseUrl } = useWebSocket();
 
   const handleSubmit = async () => {
     if (!musicUrl.trim()) return;
@@ -11,7 +14,7 @@ function MusicPanel(): JSX.Element {
     setIsSubmitting(true);
     try {
       // const response = await fetch('https://2871-219-70-65-54.ngrok-free.app/api/music', {
-      const response = await fetch('http://localhost:12393/api/music', {
+      const response = await fetch(baseUrl+'/api/music', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -30,11 +33,25 @@ function MusicPanel(): JSX.Element {
     }
   };
 
-  function stopSing(){
+  async function stopSing(){
     (window as any).current_vocalSource.stop();
     (window as any).current_instrumentSource.stop();
     (window as any).stopTime = (window as any).audioContext.currentTime - (window as any).initStartTime;
     (window as any).initStartTime = 99999;
+    (window as any).singQueue = [];
+
+    try {
+      const response = await fetch(baseUrl+'/api/stop_uvr', {
+        method: 'POST'
+      });
+
+      if (!response.ok) throw new Error('伺服器錯誤');
+
+      console.log('✅ 送出成功');
+      setMusicUrl('');
+    } catch (error) {
+      console.error('❌ 送出失敗:', (error as Error).message);
+    }
   }
 
   return (
